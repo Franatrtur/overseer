@@ -28,12 +28,18 @@ class FindingKind(str, Enum):
     STATEFUL_REDUNDANT_QUERY = "stateful_redundant_query"
     STATEFUL_REDUNDANT_SEEK = "stateful_redundant_seek"
     USE_AFTER_CLOSE = "use_after_close"
+    # Malicious signatures & evasion
+    MALICIOUS_EXECUTABLE_MEMORY = "malicious_executable_memory"
+    MALICIOUS_ANTI_DEBUG = "malicious_anti_debug"
+    MALICIOUS_FILELESS_EXEC = "malicious_fileless_exec"
+    MALICIOUS_TAMPERING = "malicious_tampering"
 
 
 class Severity(str, Enum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
+    CRITICAL = "critical"
 
 
 @dataclass
@@ -179,12 +185,23 @@ class SyscallReport:
     error_counts: Dict[str, int]
     duration_seconds: float = 0.0
 
+    @property
+    def security_findings(self) -> List[DuplicateFinding]:
+        """Findings representing malicious patterns or evasion attempts."""
+        return [f for f in self.findings if f.kind.value.startswith("malicious_")]
+
+    @property
+    def duplicate_findings(self) -> List[DuplicateFinding]:
+        """Findings representing redundant or duplicate syscalls."""
+        return [f for f in self.findings if not f.kind.value.startswith("malicious_")]
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "target": self.target,
             "total_syscalls": self.total_syscalls,
             "unique_syscalls": self.unique_syscalls,
             "findings_count": len(self.findings),
+            "security_findings_count": len(self.security_findings),
             "duration_seconds": self.duration_seconds,
             "findings": [f.to_dict() for f in self.findings],
             "syscall_counts": self.syscall_counts,

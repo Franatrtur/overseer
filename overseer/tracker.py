@@ -108,6 +108,10 @@ class GDBTracker:
             exclude_syscalls=set(exclude_sc) if exclude_sc else None,
             per_thread=config.get("per_thread", True),
             ignore_loader_noise=config.get("ignore_loader_noise", True),
+            enable_security=config.get("detect_malware", True),
+            dump_executable_memory=config.get("dump_executable_memory", True),
+            dump_dir=config.get("dump_dir", "overseer_dumps"),
+            neutralize_anti_debug=config.get("neutralize_anti_debug", True),
         )
 
         self.reporter = Reporter(
@@ -311,6 +315,25 @@ class GDBTracker:
 
         # Feed to detector
         new_findings = self.detector.feed(event)
+
+        # Active security defense: anti-debug neutralization and memory dumping
+        inf = gdb.selected_inferior() if gdb else None
+        for finding in new_findings:
+            if finding.details.get("should_neutralize"):
+                self.detector.security_engine.neutralize_syscall(
+                    gdb, self.arch, event, finding
+                )
+
+            if inf and finding.details.get("dump_requested"):
+                addr = finding.details.get("memory_addr")
+                length = finding.details.get("memory_length", 4096)
+                if addr and addr > 0 and not event.is_error:
+                    dump_path = self.detector.security_engine.dump_memory(
+                        inf, addr, length, event
+                    )
+                    if dump_path:
+                        finding.details["dump_path"] = dump_path
+                        finding.message += f" [Memory dumped: {dump_path}]"
 
         # Live reporting
         if self.verbose:

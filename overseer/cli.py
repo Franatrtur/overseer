@@ -129,6 +129,26 @@ def _add_common_tracing_args(p: argparse.ArgumentParser):
         "--gdb-path",
         help="Path to gdb executable (default: search PATH)",
     )
+    p.add_argument(
+        "--no-security",
+        action="store_true",
+        help="Disable malicious syscall signature detection",
+    )
+    p.add_argument(
+        "--dump-dir",
+        default="overseer_dumps",
+        help="Directory to dump suspicious executable memory regions (default: 'overseer_dumps')",
+    )
+    p.add_argument(
+        "--no-dump",
+        action="store_true",
+        help="Disable dumping of suspicious executable memory regions",
+    )
+    p.add_argument(
+        "--no-neutralize",
+        action="store_true",
+        help="Disable active neutralization/spoofing of anti-debugging traps (e.g. ptrace TRACEME)",
+    )
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -168,6 +188,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         "verbose": parsed.verbose,
         "quiet": parsed.quiet,
         "json_path": parsed.json_path,
+        "detect_malware": not parsed.no_security,
+        "dump_executable_memory": not parsed.no_dump,
+        "dump_dir": parsed.dump_dir,
+        "neutralize_anti_debug": not parsed.no_neutralize,
     }
 
     if parsed.subcommand == "run":

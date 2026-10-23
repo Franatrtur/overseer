@@ -88,6 +88,67 @@ WHENCE_MAP = {
     2: "SEEK_END",
 }
 
+# Memory protection flags
+PROT_FLAGS = [
+    (0x1, "PROT_READ"),
+    (0x2, "PROT_WRITE"),
+    (0x4, "PROT_EXEC"),
+    (0x01000000, "PROT_GROWSDOWN"),
+    (0x02000000, "PROT_GROWSUP"),
+]
+
+# Memory mapping flags
+MAP_FLAGS = [
+    (0x01, "MAP_SHARED"),
+    (0x02, "MAP_PRIVATE"),
+    (0x10, "MAP_FIXED"),
+    (0x20, "MAP_ANONYMOUS"),
+    (0x100, "MAP_GROWSDOWN"),
+    (0x800, "MAP_DENYWRITE"),
+    (0x1000, "MAP_EXECUTABLE"),
+    (0x2000, "MAP_LOCKED"),
+    (0x4000, "MAP_NORESERVE"),
+    (0x8000, "MAP_POPULATE"),
+    (0x20000, "MAP_STACK"),
+    (0x40000, "MAP_HUGETLB"),
+]
+
+# ptrace requests
+PTRACE_REQUESTS = {
+    0: "PTRACE_TRACEME",
+    1: "PTRACE_PEEKTEXT",
+    2: "PTRACE_PEEKDATA",
+    3: "PTRACE_PEEKUSER",
+    4: "PTRACE_POKETEXT",
+    5: "PTRACE_POKEDATA",
+    6: "PTRACE_POKEUSER",
+    7: "PTRACE_CONT",
+    8: "PTRACE_KILL",
+    9: "PTRACE_SINGLESTEP",
+    16: "PTRACE_ATTACH",
+    17: "PTRACE_DETACH",
+    24: "PTRACE_SYSCALL",
+    0x4200: "PTRACE_SETOPTIONS",
+    0x4201: "PTRACE_GETEVENTMSG",
+    0x4202: "PTRACE_GETSIGINFO",
+    0x4203: "PTRACE_SETSIGINFO",
+    0x4206: "PTRACE_SEIZE",
+}
+
+# prctl options
+PRCTL_OPTIONS = {
+    1: "PR_SET_PDEATHSIG",
+    2: "PR_GET_PDEATHSIG",
+    3: "PR_SET_DUMPABLE",
+    4: "PR_GET_DUMPABLE",
+    15: "PR_SET_NAME",
+    16: "PR_GET_NAME",
+    21: "PR_GET_SECCOMP",
+    22: "PR_SET_SECCOMP",
+    38: "PR_SET_NO_NEW_PRIVS",
+    39: "PR_GET_NO_NEW_PRIVS",
+}
+
 AT_FDCWD = -100
 
 # Common syscall argument schemas: (arg_name, arg_type)
@@ -117,10 +178,13 @@ SYSCALL_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "readlink": [("path", "path"), ("buf", "ptr"), ("bufsiz", "int")],
     "readlinkat": [("dirfd", "fd"), ("path", "path"), ("buf", "ptr"), ("bufsiz", "int")],
     "lseek": [("fd", "fd"), ("offset", "int"), ("whence", "whence")],
-    "mmap": [("addr", "hex"), ("length", "int"), ("prot", "hex"), ("flags", "hex"), ("fd", "fd"), ("offset", "int")],
-    "mprotect": [("addr", "hex"), ("length", "int"), ("prot", "hex")],
+    "mmap": [("addr", "hex"), ("length", "int"), ("prot", "prot"), ("flags", "mmap_flags"), ("fd", "fd"), ("offset", "int")],
+    "mprotect": [("addr", "hex"), ("length", "int"), ("prot", "prot")],
     "munmap": [("addr", "hex"), ("length", "int")],
     "brk": [("addr", "hex")],
+    "ptrace": [("request", "ptrace_req"), ("pid", "int"), ("addr", "hex"), ("data", "hex")],
+    "prctl": [("option", "prctl_opt"), ("arg2", "hex"), ("arg3", "hex"), ("arg4", "hex"), ("arg5", "hex")],
+    "memfd_create": [("name", "path"), ("flags", "hex")],
     "ioctl": [("fd", "fd"), ("request", "ioctl_req"), ("arg", "ptr")],
     "fcntl": [("fd", "fd"), ("cmd", "int"), ("arg", "hex")],
     "dup": [("oldfd", "fd")],
@@ -201,12 +265,15 @@ SYSCALL_CATEGORIES: Dict[str, SyscallCategory] = {
     "munmap": SyscallCategory.MEMORY,
     "brk": SyscallCategory.MEMORY,
     "madvise": SyscallCategory.MEMORY,
+    "memfd_create": SyscallCategory.MEMORY,
     # Process
     "clone": SyscallCategory.PROCESS,
     "clone3": SyscallCategory.PROCESS,
     "fork": SyscallCategory.PROCESS,
     "vfork": SyscallCategory.PROCESS,
     "execve": SyscallCategory.PROCESS,
+    "ptrace": SyscallCategory.PROCESS,
+    "prctl": SyscallCategory.PROCESS,
     "exit": SyscallCategory.PROCESS,
     "exit_group": SyscallCategory.PROCESS,
     "wait4": SyscallCategory.PROCESS,
@@ -461,6 +528,23 @@ class SyscallDatabase:
                 elif raw_val & 3 == 2:
                     flag_names.insert(0, "O_RDWR")
                 decoded[arg_name] = "|".join(flag_names) if flag_names else hex(raw_val)
+
+            elif arg_type == "prot":
+                if raw_val == 0:
+                    decoded[arg_name] = "PROT_NONE"
+                else:
+                    prot_names = [name for bit, name in PROT_FLAGS if (raw_val & bit) == bit]
+                    decoded[arg_name] = "|".join(prot_names) if prot_names else hex(raw_val)
+
+            elif arg_type == "mmap_flags":
+                map_names = [name for bit, name in MAP_FLAGS if (raw_val & bit) == bit]
+                decoded[arg_name] = "|".join(map_names) if map_names else hex(raw_val)
+
+            elif arg_type == "ptrace_req":
+                decoded[arg_name] = PTRACE_REQUESTS.get(raw_val, hex(raw_val))
+
+            elif arg_type == "prctl_opt":
+                decoded[arg_name] = PRCTL_OPTIONS.get(raw_val, hex(raw_val))
 
             elif arg_type == "ioctl_req":
                 decoded[arg_name] = IOCTL_NAMES.get(raw_val, hex(raw_val))

@@ -14,6 +14,7 @@ from overseer.models import (
     SyscallEvent,
     SyscallReport,
 )
+from overseer.security import SecurityEngine
 from overseer.state import StateManager
 
 
@@ -31,6 +32,10 @@ class SyscallDetector:
         exclude_syscalls: Optional[Set[str]] = None,
         per_thread: bool = True,
         ignore_loader_noise: bool = False,
+        enable_security: bool = True,
+        dump_executable_memory: bool = True,
+        dump_dir: str = "overseer_dumps",
+        neutralize_anti_debug: bool = True,
     ):
         self.consecutive_only = consecutive_only
         self.window_size = max(2, window_size)
@@ -50,6 +55,12 @@ class SyscallDetector:
         self.events: List[SyscallEvent] = []
         self.findings: List[DuplicateFinding] = []
         self.state_manager = StateManager()
+        self.security_engine = SecurityEngine(
+            enabled=enable_security,
+            dump_executable_memory=dump_executable_memory,
+            dump_dir=dump_dir,
+            neutralize_anti_debug=neutralize_anti_debug,
+        )
 
         # Last event per thread (or global thread 0 if not per_thread)
         self.last_events: Dict[int, SyscallEvent] = {}
@@ -99,7 +110,13 @@ class SyscallDetector:
 
         new_findings: List[DuplicateFinding] = []
 
-        # 1. Stateful resource tracking
+        # 1. Malicious signature and evasion detection
+        sec_findings = self.security_engine.analyze_event(event)
+        for sf in sec_findings:
+            new_findings.append(sf)
+            self.duplicate_counts[event.name] += 1
+
+        # 2. Stateful resource tracking
         state_findings, is_state_handled = self.state_manager.process_event(event)
 
         for sf in state_findings:
