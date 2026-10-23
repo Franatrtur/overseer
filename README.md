@@ -15,6 +15,11 @@
   - **Idempotent Query Redundancy**: Identifies repeated read-only queries (`stat`, `access`, `readlink`, `getcwd`, `uname`) on unchanged targets within a sliding window.
   - **Failing Streaks**: Detects repeated failing calls (e.g. loops querying nonexistent resources returning `-ENOENT` or `-EACCES`).
   - **Sliding-Window Matching**: Configurable window distance tracking for non-consecutive duplicates.
+- **Malicious Signature Detection & Active Defense**:
+  - **Suspicious Executable Memory & Memory Dumping**: Flags violations of W^X memory protection (e.g. `mmap` with `PROT_READ|PROT_WRITE|PROT_EXEC` or anonymous executable allocations) and `mprotect` transitioning regions to executable. Automatically dumps the mapped memory region to binary disk files (`overseer_dumps/`) for forensic reverse engineering and YARA analysis.
+  - **Anti-Debugging Detection & Neutralization**: Intercepts anti-debugging calls like `ptrace(PTRACE_TRACEME)` and `prctl(PR_SET_DUMPABLE, 0)`. When detected, Overseer logs the evasion attempt and actively spoofs the return register in GDB to `0` (Success) so the target process continues normal execution without terminating.
+  - **Fileless Binary Execution**: Detects in-memory binary staging via `memfd_create`.
+  - **Process Memory Tampering**: Detects code injection via `/proc/self/mem` and self-deletion anti-forensics (`unlink /proc/self/exe`).
 - **Stateful Resource & Invalidation Tracking**:
   - **Beyond `strace | uniq`**: Distinguishes truly redundant queries from state-justified ones. For example, `fstat -> fstat` without mutation is flagged as wasteful, while `fstat -> write -> fstat` is recognized as valid cache-invalidating behavior.
   - **Offset Tracking**: Tracks file offsets across `lseek`, `read`, and `write` calls to catch redundant seeks (e.g. `lseek(fd, 0, SEEK_SET)` when offset is already 0).
@@ -168,6 +173,18 @@ exit_code = connector.run_target("./my_program", args=["--demo"], config=config)
 | `--verbose`, `-v` | Real-time live log of every syscall | `False` |
 | `--quiet`, `-q` | Suppress live alerts, show summary | `False` |
 | `--no-threads` | Aggregate tracking across all threads | Per-thread |
+| `--dump-dir <DIR>` | Directory for executable memory dumps | `overseer_dumps` |
+| `--no-dump` | Disable dumping of suspicious executable memory | `False` |
+| `--no-neutralize` | Disable spoofing/neutralization of anti-debugging | `False` |
+| `--no-security` | Disable malicious signature detection | `False` |
+
+---
+
+## Software Bill of Materials (SBOM) & CI/CD
+
+Overseer includes automated CI/CD workflows under `.github/workflows/`:
+- **`sbom.yml`**: Generates standardized Software Bill of Materials in both **CycloneDX JSON** and **SPDX JSON** formats using Anchore `syft`, performs vulnerability scanning against dependencies, and publishes SBOM artifacts.
+- **`ci.yml`**: Multi-Python matrix test suite verifying GDB syscall tracing, duplicate detection, and security defenses on Ubuntu.
 
 ---
 
