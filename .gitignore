@@ -26,3 +26,4 @@ overseer_dumps/
 *.o
 *.a
 *.so
+FINDINGS.md
