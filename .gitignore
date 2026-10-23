@@ -17,7 +17,8 @@ tests/test_programs/failing_dup
 tests/test_programs/multithread_dup
 tests/test_programs/ttyname_dup
 tests/test_programs/windowed_dup
-tests/test_programs/stateful_*
+tests/test_programs/stateful_io
+!tests/test_programs/*.c
 *.bin
 *.o
 *.a

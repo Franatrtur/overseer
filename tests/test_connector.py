@@ -68,7 +68,7 @@ class TestGDBIntegration(unittest.TestCase):
 
             self.assertGreaterEqual(data["findings_count"], 1)
             f = data["findings"][0]
-            self.assertEqual(f["kind"], "idempotent_query")
+            self.assertIn(f["kind"], ("idempotent_query", "stateful_redundant_query"))
             self.assertIn("hosts", f["current_event"]["decoded_args"].get("path", ""))
 
         finally:
@@ -137,6 +137,58 @@ class TestGDBIntegration(unittest.TestCase):
             self.assertEqual(finding["previous_event"]["decoded_args"].get("request"), "TCGETS")
             self.assertEqual(finding["previous_event"]["decoded_args"].get("fd"), 0)
             self.assertEqual(data["duplicate_counts"].get("ioctl"), 1)
+
+        finally:
+            if os.path.exists(json_path):
+                os.remove(json_path)
+
+
+    def test_stateful_resource_tracking_integration(self):
+        """
+        Verify end-to-end GDB execution of stateful resource invalidation:
+        - fstat -> fstat (wasteful, flagged)
+        - fstat -> write -> fstat (justified, NOT flagged)
+        - lseek -> lseek (wasteful, flagged)
+        - lseek -> read -> lseek (justified, NOT flagged)
+        - double close (error, flagged)
+        """
+        bin_path = os.path.join(self.test_dir, "stateful_io")
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
+            json_path = tf.name
+
+        try:
+            config = {
+                "start_at": "main",
+                "json_path": json_path,
+                "quiet": True,
+                "window_size": 15,
+            }
+            ret = self.connector.run_target(bin_path, config=config)
+            self.assertEqual(ret, 0)
+
+            with open(json_path, "r") as f:
+                data = json.load(f)
+
+            findings = data["findings"]
+            self.assertEqual(len(findings), 3)
+
+            # Check 1: Redundant fstat
+            fstat_f = [f for f in findings if f["current_event"]["name"] == "fstat"]
+            self.assertEqual(len(fstat_f), 1)
+            self.assertEqual(fstat_f[0]["kind"], "stateful_redundant_query")
+            self.assertEqual(fstat_f[0]["severity"], "warning")
+
+            # Check 2: Redundant lseek
+            lseek_f = [f for f in findings if f["current_event"]["name"] == "lseek"]
+            self.assertEqual(len(lseek_f), 1)
+            self.assertEqual(lseek_f[0]["kind"], "stateful_redundant_seek")
+            self.assertEqual(lseek_f[0]["severity"], "warning")
+
+            # Check 3: Double close
+            close_f = [f for f in findings if f["current_event"]["name"] == "close"]
+            self.assertEqual(len(close_f), 1)
+            self.assertEqual(close_f[0]["kind"], "use_after_close")
+            self.assertEqual(close_f[0]["severity"], "error")
 
         finally:
             if os.path.exists(json_path):
