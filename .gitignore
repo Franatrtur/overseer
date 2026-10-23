@@ -18,6 +18,9 @@ tests/test_programs/multithread_dup
 tests/test_programs/ttyname_dup
 tests/test_programs/windowed_dup
 tests/test_programs/stateful_io
+tests/test_programs/suspicious_mmap
+tests/test_programs/antidebug_ptrace
+overseer_dumps/
 !tests/test_programs/*.c
 *.bin
 *.o

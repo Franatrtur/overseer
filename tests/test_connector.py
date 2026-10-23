@@ -194,6 +194,85 @@ class TestGDBIntegration(unittest.TestCase):
             if os.path.exists(json_path):
                 os.remove(json_path)
 
+    def test_suspicious_mmap_dump_integration(self):
+        """
+        Verify end-to-end detection of suspicious executable memory mappings
+        and verify that the memory region containing shellcode is dumped to disk.
+        """
+        bin_path = os.path.join(self.test_dir, "suspicious_mmap")
+        with tempfile.TemporaryDirectory() as dump_tmp:
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
+                json_path = tf.name
+
+            try:
+                config = {
+                    "start_at": "main",
+                    "json_path": json_path,
+                    "quiet": True,
+                    "dump_dir": dump_tmp,
+                    "dump_executable_memory": True,
+                }
+                ret = self.connector.run_target(bin_path, config=config)
+                self.assertEqual(ret, 0)
+
+                with open(json_path, "r") as f:
+                    data = json.load(f)
+
+                sec_findings = [f for f in data["findings"] if f["kind"] == "malicious_executable_memory"]
+                self.assertGreaterEqual(len(sec_findings), 2)
+
+                # Check that dump files were created in dump_tmp
+                dump_files = [f for f in os.listdir(dump_tmp) if f.endswith(".bin")]
+                self.assertGreaterEqual(len(dump_files), 1)
+
+                # Verify dumped memory contains the shellcode signature
+                found_sig = False
+                for df in dump_files:
+                    with open(os.path.join(dump_tmp, df), "rb") as dump_f:
+                        content = dump_f.read()
+                        if b"OVERSEER_SHELLCODE_SIGNATURE" in content:
+                            found_sig = True
+                            break
+                self.assertTrue(found_sig, "Shellcode signature not found in dumped memory files")
+
+            finally:
+                if os.path.exists(json_path):
+                    os.remove(json_path)
+
+    def test_antidebug_ptrace_neutralization_integration(self):
+        """
+        Verify that ptrace(PTRACE_TRACEME) anti-debugging check is detected
+        and actively neutralized (spoofed to 0), allowing inferior to exit with 0.
+        """
+        bin_path = os.path.join(self.test_dir, "antidebug_ptrace")
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
+            json_path = tf.name
+
+        try:
+            config = {
+                "start_at": "main",
+                "json_path": json_path,
+                "quiet": True,
+                "neutralize_anti_debug": True,
+            }
+            # Target returns 42 if ptrace fails; returns 0 if ptrace succeeds (neutralized)
+            ret = self.connector.run_target(bin_path, config=config)
+            self.assertEqual(ret, 0)
+
+            with open(json_path, "r") as f:
+                data = json.load(f)
+
+            ptrace_findings = [f for f in data["findings"] if f["kind"] == "malicious_anti_debug"]
+            self.assertEqual(len(ptrace_findings), 1)
+            pf = ptrace_findings[0]
+            self.assertEqual(pf["severity"], "critical")
+            self.assertTrue(pf["details"].get("neutralized"))
+            self.assertEqual(pf["current_event"]["ret_val"], 0)
+
+        finally:
+            if os.path.exists(json_path):
+                os.remove(json_path)
+
 
 if __name__ == "__main__":
     unittest.main()
