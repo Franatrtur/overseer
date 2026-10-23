@@ -11,6 +11,11 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+# Ensure overseer parent dir is at the beginning of sys.path
+_overseer_pkg_parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _overseer_pkg_parent not in sys.path:
+    sys.path.insert(0, _overseer_pkg_parent)
+
 try:
     import gdb
 except ImportError:

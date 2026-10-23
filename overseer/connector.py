@@ -29,13 +29,37 @@ class GDBConnector:
         env = dict(os.environ)
         env["OVERSEER_CONFIG"] = json.dumps(config)
 
+        # Clear environment variables that corrupt GDB's embedded Python interpreter
+        # (e.g. when running inside conda, virtualenv, or CI python toolcache)
+        for var in (
+            "PYTHONHOME",
+            "PYTHONSTARTUP",
+            "PYTHONEXECUTABLE",
+            "PYTHONUSERBASE",
+            "VIRTUAL_ENV",
+            "CONDA_PREFIX",
+            "CONDA_DEFAULT_ENV",
+            "_PYTHON_SYSCONFIGDATA_NAME",
+        ):
+            env.pop(var, None)
+
+        # Filter out foreign Python/Conda library paths from LD_LIBRARY_PATH so GDB
+        # dynamically links against the system libpython it was built for
+        if "LD_LIBRARY_PATH" in env:
+            paths = env["LD_LIBRARY_PATH"].split(os.pathsep)
+            clean_paths = [
+                p for p in paths
+                if not any(m in p for m in ("hostedtoolcache", "miniconda", "anaconda", "envs/", "venv", ".venv"))
+            ]
+            if clean_paths:
+                env["LD_LIBRARY_PATH"] = os.pathsep.join(clean_paths)
+            else:
+                env.pop("LD_LIBRARY_PATH", None)
+
         # Ensure overseer parent dir is in PYTHONPATH so GDB's python can import overseer
+        # without inheriting foreign stdlib or site-packages from caller
         overseer_pkg_parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        existing_pythonpath = env.get("PYTHONPATH", "")
-        if existing_pythonpath:
-            env["PYTHONPATH"] = f"{overseer_pkg_parent}:{existing_pythonpath}"
-        else:
-            env["PYTHONPATH"] = overseer_pkg_parent
+        env["PYTHONPATH"] = overseer_pkg_parent
 
         return env
 
