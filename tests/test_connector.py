@@ -15,6 +15,16 @@ class TestGDBIntegration(unittest.TestCase):
         cls.connector = GDBConnector()
         cls.test_dir = os.path.join(os.path.dirname(__file__), "test_programs")
 
+        # Compile any missing test binaries
+        import subprocess
+        for src in os.listdir(cls.test_dir):
+            if src.endswith(".c"):
+                bin_name = src[:-2]
+                bin_path = os.path.join(cls.test_dir, bin_name)
+                src_path = os.path.join(cls.test_dir, src)
+                if not os.path.exists(bin_path):
+                    subprocess.run(["gcc", "-O0", "-g", src_path, "-o", bin_path], check=True)
+
     def test_consecutive_dup_integration(self):
         bin_path = os.path.join(self.test_dir, "consecutive_dup")
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
