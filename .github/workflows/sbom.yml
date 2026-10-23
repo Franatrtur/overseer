@@ -1,0 +1,79 @@
+name: Software Bill of Materials (SBOM)
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  generate-sbom:
+    name: Generate & Validate SBOM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies and package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pip-licenses
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          format: cyclonedx-json
+          output-file: overseer-sbom.cyclonedx.json
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          format: spdx-json
+          output-file: overseer-sbom.spdx.json
+
+      - name: Verify SBOM generation
+        run: |
+          echo "=== Verifying Generated SBOMs ==="
+          ls -lh overseer-sbom.cyclonedx.json overseer-sbom.spdx.json
+          python -c "
+          import json
+          with open('overseer-sbom.cyclonedx.json') as f:
+              cdx = json.load(f)
+              print('CycloneDX format:', cdx.get('bomFormat'), 'version:', cdx.get('specVersion'))
+          with open('overseer-sbom.spdx.json') as f:
+              spdx = json.load(f)
+              print('SPDX format:', spdx.get('spdxVersion'), 'packages:', len(spdx.get('packages', [])))
+          "
+
+      - name: Scan SBOM for vulnerabilities (Anchore Grype)
+        uses: anchore/scan-action@v3
+        with:
+          sbom: overseer-sbom.cyclonedx.json
+          fail-build: false
+          severity-cutoff: high
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: overseer-sbom-artifacts
+          path: |
+            overseer-sbom.cyclonedx.json
+            overseer-sbom.spdx.json
