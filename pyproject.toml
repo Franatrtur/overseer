@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "overseer"
+version = "1.0.0"
+description = "GDB-powered dynamic syscall duplicate detector and profiler"
+readme = "README.md"
+authors = [{ name = "Overseer Team" }]
+license = { text = "MIT" }
+requires-python = ">=3.8"
+dependencies = [
+    "rich>=12.0.0",
+]
+
+[project.scripts]
+overseer = "overseer.cli:main"

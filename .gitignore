@@ -1,0 +1,24 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Coursework archives and sandbox
+pb152/
+*.tar.gz
+
+# Compiled binaries and objects in tests
+tests/test_programs/consecutive_dup
+tests/test_programs/failing_dup
+tests/test_programs/multithread_dup
+tests/test_programs/ttyname_dup
+tests/test_programs/windowed_dup
+tests/test_programs/stateful_*
+*.bin
+*.o
+*.a
+*.so
