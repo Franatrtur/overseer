@@ -14,6 +14,7 @@ from overseer.models import (
     SyscallEvent,
     SyscallReport,
 )
+from overseer.state import StateManager
 
 
 class SyscallDetector:
@@ -48,6 +49,7 @@ class SyscallDetector:
         # Tracking state
         self.events: List[SyscallEvent] = []
         self.findings: List[DuplicateFinding] = []
+        self.state_manager = StateManager()
 
         # Last event per thread (or global thread 0 if not per_thread)
         self.last_events: Dict[int, SyscallEvent] = {}
@@ -97,9 +99,25 @@ class SyscallDetector:
 
         new_findings: List[DuplicateFinding] = []
 
+        # 1. Stateful resource tracking
+        state_findings, is_state_handled = self.state_manager.process_event(event)
+
+        for sf in state_findings:
+            if self.consecutive_only and sf.kind in (
+                FindingKind.STATEFUL_REDUNDANT_QUERY,
+                FindingKind.STATEFUL_REDUNDANT_SEEK,
+            ):
+                # If consecutive_only mode, only flag if it was an immediate repetition
+                if not (last_event and last_event.signature_key == sig_key):
+                    continue
+            new_findings.append(sf)
+            self.duplicate_counts[event.name] += 1
+
+        already_state_flagged = len(new_findings) > 0
+
         # Check Consecutive Duplicate
         is_consecutive = False
-        if last_event and last_event.signature_key == sig_key:
+        if last_event and last_event.signature_key == sig_key and not is_state_handled and not already_state_flagged:
             is_consecutive = True
             self.duplicate_counts[event.name] += 1
 
@@ -160,7 +178,7 @@ class SyscallDetector:
             self.failing_streaks[fail_key] = 0
 
         # Check Windowed Duplicate (if not consecutive and not consecutive_only)
-        if not is_consecutive and not self.consecutive_only:
+        if not is_consecutive and not self.consecutive_only and not is_state_handled and not already_state_flagged:
             # Look back in sliding window
             match_event = None
             dist = 0

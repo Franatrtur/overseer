@@ -25,6 +25,9 @@ class FindingKind(str, Enum):
     FAILING = "failing"
     IDEMPOTENT_QUERY = "idempotent_query"
     HIGH_FREQUENCY = "high_frequency"
+    STATEFUL_REDUNDANT_QUERY = "stateful_redundant_query"
+    STATEFUL_REDUNDANT_SEEK = "stateful_redundant_seek"
+    USE_AFTER_CLOSE = "use_after_close"
 
 
 class Severity(str, Enum):
