@@ -15,6 +15,10 @@
   - **Idempotent Query Redundancy**: Identifies repeated read-only queries (`stat`, `access`, `readlink`, `getcwd`, `uname`) on unchanged targets within a sliding window.
   - **Failing Streaks**: Detects repeated failing calls (e.g. loops querying nonexistent resources returning `-ENOENT` or `-EACCES`).
   - **Sliding-Window Matching**: Configurable window distance tracking for non-consecutive duplicates.
+- **Stateful Resource & Invalidation Tracking**:
+  - **Beyond `strace | uniq`**: Distinguishes truly redundant queries from state-justified ones. For example, `fstat -> fstat` without mutation is flagged as wasteful, while `fstat -> write -> fstat` is recognized as valid cache-invalidating behavior.
+  - **Offset Tracking**: Tracks file offsets across `lseek`, `read`, and `write` calls to catch redundant seeks (e.g. `lseek(fd, 0, SEEK_SET)` when offset is already 0).
+  - **Resource Lifecycle & Double Close**: Tracks descriptor open/close states to catch use-after-close and double-close bugs with exact callsite backtraces.
 - **Deep Context Extraction**:
   - Dereferences user memory for file paths (e.g. `openat`, `stat`, `unlink`, `rename`), handles file descriptors (including `AT_FDCWD`), flags, modes, and offsets.
   - Walks the GDB call stack to report the exact function name, source file, and line number in your application.
